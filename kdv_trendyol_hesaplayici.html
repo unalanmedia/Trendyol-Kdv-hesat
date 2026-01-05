@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KDV Matrah Hesaplayıcı (Trendyol)</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin: 0; background: #0b1220; color: #e9eefc; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 18px; }
+    .card {
+      background: #121b33; border: 1px solid rgba(255,255,255,.08);
+      border-radius: 14px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+    h1 { font-size: 18px; margin: 0 0 10px; }
+    p { margin: 6px 0 12px; color: rgba(233,238,252,.85); }
+    .grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
+    @media (min-width: 640px) { .grid { grid-template-columns: 1fr 1fr; } }
+    label { font-size: 13px; color: rgba(233,238,252,.85); display: block; margin-bottom: 6px; }
+    input, select {
+      width: 100%; padding: 12px 12px; border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.14); background: #0e1730; color: #e9eefc;
+      outline: none; font-size: 16px;
+    }
+    input:focus, select:focus { border-color: rgba(120,170,255,.8); }
+    .row { display: grid; gap: 12px; grid-template-columns: 1fr; }
+    .btns { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    button {
+      border: 0; border-radius: 12px; padding: 11px 14px;
+      background: #2b59ff; color: white; font-weight: 600; cursor: pointer;
+    }
+    button.secondary { background: rgba(255,255,255,.10); color: #e9eefc; }
+    .out {
+      margin-top: 14px; padding: 12px; border-radius: 12px;
+      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.10);
+    }
+    .out .line { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px dashed rgba(255,255,255,.12); }
+    .out .line:last-child { border-bottom: 0; }
+    .k { color: rgba(233,238,252,.8); }
+    .v { font-variant-numeric: tabular-nums; font-weight: 700; }
+    .hint { font-size: 12px; color: rgba(233,238,252,.70); margin-top: 10px; line-height: 1.4; }
+    .pill {
+      display: inline-block; padding: 4px 10px; border-radius: 999px;
+      background: rgba(43,89,255,.18); border: 1px solid rgba(43,89,255,.35);
+      font-size: 12px; margin-left: 6px;
+    }
+    .toast {
+      position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+      background: rgba(0,0,0,.75); color: #fff; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.12); display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>KDV Matrah Hesaplayıcı <span class="pill">Trendyol / e-Arşiv</span></h1>
+      <p>Toplam (KDV dâhil) fiyatı gir → fatura için <b>matrah</b> ve <b>KDV</b> otomatik hesaplansın. İstersen matrah girip toplamı da bul.</p>
+
+      <div class="grid">
+        <div>
+          <label>KDV Oranı (%)</label>
+          <input id="kdvOran" type="number" inputmode="decimal" step="0.01" value="20" />
+        </div>
+
+        <div>
+          <label>Hesap Modu</label>
+          <select id="mod">
+            <option value="dahil">Toplam (KDV dâhil) → Matrah + KDV</option>
+            <option value="haric">Matrah (KDV hariç) → Toplam + KDV</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        <div>
+          <label id="girisLabel">Toplam (KDV dâhil) Satış Fiyatı</label>
+          <input id="giris" type="number" inputmode="decimal" step="0.01" placeholder="Örn: 205.19" />
+        </div>
+      </div>
+
+      <div class="btns">
+        <button id="hesapla">Hesapla</button>
+        <button class="secondary" id="temizle">Temizle</button>
+        <button class="secondary" id="kopyalaMatrah">Matrahı Kopyala</button>
+        <button class="secondary" id="kopyalaKdv">KDV’yi Kopyala</button>
+        <button class="secondary" id="kopyalaToplam">Toplamı Kopyala</button>
+      </div>
+
+      <div class="out" aria-live="polite">
+        <div class="line"><div class="k">Matrah (KDV hariç)</div><div class="v" id="outMatrah">—</div></div>
+        <div class="line"><div class="k">KDV Tutarı</div><div class="v" id="outKdv">—</div></div>
+        <div class="line"><div class="k">Toplam (KDV dâhil)</div><div class="v" id="outToplam">—</div></div>
+      </div>
+
+      <div class="hint">
+        <b>Not:</b> Trendyol’da çoğu zaman görünen fiyat <b>KDV dâhildir</b>.
+        e-Arşiv’de “Mal/Hizmet Tutarı” alanına <b>matrah</b> yazılır; KDV ayrıca hesaplanır.
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">Kopyalandı</div>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+
+    const kdvOran = el("kdvOran");
+    const mod = el("mod");
+    const giris = el("giris");
+    const girisLabel = el("girisLabel");
+
+    const outMatrah = el("outMatrah");
+    const outKdv = el("outKdv");
+    const outToplam = el("outToplam");
+
+    const toast = el("toast");
+
+    function showToast(msg="Kopyalandı") {
+      toast.textContent = msg;
+      toast.style.display = "block";
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => toast.style.display = "none", 1200);
+    }
+
+    function round2(n) {
+      // Para için 2 hane
+      return Math.round((n + Number.EPSILON) * 100) / 100;
+    }
+
+    function formatTL(n) {
+      if (!isFinite(n)) return "—";
+      // TR format: 1.234,56
+      return new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+    }
+
+    function parseNum(v) {
+      if (typeof v !== "string") v = String(v ?? "");
+      // Kullanıcı virgül girerse noktaya çevir
+      v = v.replace(",", ".");
+      const n = Number(v);
+      return isFinite(n) ? n : NaN;
+    }
+
+    function hesapla() {
+      const rate = parseNum(kdvOran.value);
+      const x = parseNum(giris.value);
+
+      if (!isFinite(rate) || rate < 0) {
+        showToast("KDV oranı geçersiz");
+        return;
+      }
+      if (!isFinite(x) || x < 0) {
+        showToast("Tutar geçersiz");
+        return;
+      }
+
+      const k = rate / 100;
+      let matrah, kdv, toplam;
+
+      if (mod.value === "dahil") {
+        // Toplam (KDV dahil) -> Matrah + KDV
+        toplam = x;
+        matrah = toplam / (1 + k);
+        kdv = toplam - matrah;
+      } else {
+        // Matrah (KDV hariç) -> Toplam + KDV
+        matrah = x;
+        kdv = matrah * k;
+        toplam = matrah + kdv;
+      }
+
+      matrah = round2(matrah);
+      kdv = round2(kdv);
+      toplam = round2(toplam);
+
+      outMatrah.textContent = formatTL(matrah);
+      outKdv.textContent = formatTL(kdv);
+      outToplam.textContent = formatTL(toplam);
+
+      // Değerleri data olarak sakla (kopyalama için)
+      outMatrah.dataset.val = matrah.toFixed(2);
+      outKdv.dataset.val = kdv.toFixed(2);
+      outToplam.dataset.val = toplam.toFixed(2);
+    }
+
+    function temizle() {
+      giris.value = "";
+      outMatrah.textContent = "—";
+      outKdv.textContent = "—";
+      outToplam.textContent = "—";
+      outMatrah.dataset.val = "";
+      outKdv.dataset.val = "";
+      outToplam.dataset.val = "";
+    }
+
+    async function copyVal(val, label) {
+      if (!val) return showToast("Önce hesapla");
+      try {
+        await navigator.clipboard.writeText(val);
+        showToast(label + " kopyalandı");
+      } catch {
+        // Clipboard kapalıysa fallback
+        const ta = document.createElement("textarea");
+        ta.value = val;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+        showToast(label + " kopyalandı");
+      }
+    }
+
+    function updateModeLabel() {
+      if (mod.value === "dahil") {
+        girisLabel.textContent = "Toplam (KDV dâhil) Satış Fiyatı";
+        giris.placeholder = "Örn: 205.19";
+      } else {
+        girisLabel.textContent = "Matrah (KDV hariç) Tutarı";
+        giris.placeholder = "Örn: 170.99";
+      }
+      // Mod değişince otomatik hesapla (eğer değer varsa)
+      if (giris.value.trim() !== "") hesapla();
+    }
+
+    el("hesapla").addEventListener("click", hesapla);
+    el("temizle").addEventListener("click", temizle);
+
+    el("kopyalaMatrah").addEventListener("click", () => copyVal(outMatrah.dataset.val, "Matrah"));
+    el("kopyalaKdv").addEventListener("click", () => copyVal(outKdv.dataset.val, "KDV"));
+    el("kopyalaToplam").addEventListener("click", () => copyVal(outToplam.dataset.val, "Toplam"));
+
+    // Canlı hesap (yazarken)
+    [kdvOran, giris].forEach(inp => inp.addEventListener("input", () => {
+      if (giris.value.trim() !== "") hesapla();
+    }));
+
+    mod.addEventListener("change", updateModeLabel);
+
+    // Başlangıç
+    updateModeLabel();
+  </script>
+</body>
+</html>
